@@ -1,100 +1,65 @@
 """
 API routes for Cloud Key Rotation Engine
 """
-from fastapi import APIRouter, HTTPException, status
-from datetime import datetime
-
-from app.api.schemas import RotationRequest, RotationResponse, ErrorResponse
+from fastapi import APIRouter, HTTPException
+from app.api.schemas import RotationRequest, RotationResponse
 from app.services.rotation_service import RotationService
-from app.core.logging_config import setup_logging
-
 
 router = APIRouter(prefix="/api/v1", tags=["rotation"])
-logger = setup_logging()
+
 rotation_service = RotationService()
 
 
 @router.post("/rotate", response_model=RotationResponse)
 async def rotate_access_key(request: RotationRequest):
     """
-    Rotate a compromised AWS IAM access key.
+    Rotate a compromised AWS access key
     
-    This endpoint:
-    1. Validates the access key exists
-    2. Fetches and classifies attached IAM policies
-    3. Creates a new access key
-    4. Deactivates the old key
-    5. Deletes the old key
-    6. Logs all metadata for audit trail
+    - **iam_user**: IAM username whose key is compromised
+    - **access_key_id**: The exposed access key ID
+    - **incident_id**: Unique incident identifier
+    - **risk_level**: Severity level (critical/high/medium/low)
     """
     try:
-        logger.info(
-            f"Rotation request received for user={request.iam_user}, "
-            f"incident_id={request.incident_id}"
+        result = await rotation_service.rotate_key(
+            iam_user=request.iam_user,
+            access_key_id=request.access_key_id,
+            incident_id=request.incident_id,
+            risk_level=request.risk_level
         )
         
-        # Execute rotation
-        result = await rotation_service.rotate_key(request)
-        
-        logger.info(
-            f"✅ Rotation completed: incident_id={request.incident_id}, "
-            f"new_key={result.new_key_id}"
-        )
+        if result.get("status") == "error":
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("message", result.get("reason", "Rotation failed"))
+            )
         
         return result
         
-    except ValueError as e:
-        logger.error(f"❌ Validation error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except PermissionError as e:
-        logger.error(f"❌ Permission error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient IAM permissions"
-        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ Rotation failed: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Rotation failed: {str(e)}"
         )
 
 
 @router.get("/audit/{incident_id}")
 async def get_audit_log(incident_id: str):
-    """
-    Retrieve audit log for a specific incident.
-    """
-    try:
-        log = await rotation_service.get_audit_log(incident_id)
-        if not log:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No audit log found for incident {incident_id}"
-            )
-        return log
-    except Exception as e:
-        logger.error(f"❌ Failed to retrieve audit log: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+    """Get audit log for a specific incident"""
+    return {
+        "incident_id": incident_id,
+        "status": "not_implemented",
+        "message": "Audit log retrieval not yet implemented"
+    }
 
 
 @router.get("/user/{iam_user}/keys")
-async def get_user_keys(iam_user: str):
-    """
-    Get all access keys for a specific IAM user (with age analysis).
-    """
-    try:
-        keys_info = await rotation_service.analyze_user_keys(iam_user)
-        return keys_info
-    except Exception as e:
-        logger.error(f"❌ Failed to analyze user keys: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+async def analyze_user_keys(iam_user: str):
+    """Analyze access keys for a specific IAM user"""
+    return {
+        "iam_user": iam_user,
+        "status": "not_implemented",
+        "message": "Key analysis not yet implemented"
+    }

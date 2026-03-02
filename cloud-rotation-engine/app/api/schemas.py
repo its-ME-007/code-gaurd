@@ -2,18 +2,15 @@
 Pydantic schemas for API request/response validation
 """
 from pydantic import BaseModel, Field
-from datetime import datetime
-from typing import Optional, Literal
-
+from typing import Optional
+import datetime
 
 class RotationRequest(BaseModel):
     """Schema for key rotation request"""
-    iam_user: str = Field(..., description="Target IAM user")
-    access_key_id: str = Field(..., description="AWS Access Key ID to rotate")
-    incident_id: str = Field(..., description="Incident ID for audit trail")
-    risk_level: Literal["low", "medium", "high", "critical"] = Field(
-        ..., description="Risk level classification"
-    )
+    iam_user: str = Field(..., description="IAM username")
+    access_key_id: str = Field(..., description="Access key ID to rotate")
+    incident_id: str = Field(..., description="Unique incident identifier")
+    risk_level: str = Field(..., description="Risk level: critical/high/medium/low")
 
     class Config:
         json_schema_extra = {
@@ -28,13 +25,19 @@ class RotationRequest(BaseModel):
 
 class RotationResponse(BaseModel):
     """Schema for successful key rotation response"""
-    status: str = Field("success", description="Operation status")
-    rotation_completed: bool = Field(..., description="Whether rotation completed")
-    iam_user: str = Field(..., description="IAM user affected")
-    old_key_deactivated: bool = Field(..., description="Old key deactivation status")
-    new_key_id: str = Field(..., description="New Access Key ID")
-    policy_level: str = Field(..., description="IAM privilege level")
-    rotation_time_ms: int = Field(..., description="Time taken in milliseconds")
+    status: str = Field(..., description="success or error")
+    rotation_completed: bool = Field(..., description="Whether rotation was completed")
+    iam_user: str = Field(..., description="IAM username")
+    old_key_deactivated: Optional[bool] = Field(None, description="Whether old key was deactivated")
+    new_key_id: Optional[str] = Field(None, description="New access key ID (masked)")
+    policy_level: str = Field(..., description="Detected policy privilege level")
+    rotation_time_ms: Optional[int] = Field(None, description="Time taken for rotation in milliseconds")
+    incident_id: Optional[str] = Field(None, description="Incident ID")
+    risk_level: Optional[str] = Field(None, description="Risk level")
+    mode: Optional[str] = Field(None, description="DRY_RUN or production mode")
+    old_key: Optional[str] = Field(None, description="Masked old key in dry run")
+    message: Optional[str] = Field(None, description="Additional message")
+    reason: Optional[str] = Field(None, description="Error reason if failed")
 
 
 class ErrorResponse(BaseModel):
@@ -45,13 +48,25 @@ class ErrorResponse(BaseModel):
     details: Optional[str] = Field(None, description="Additional error details")
 
 
-class RotationAuditLog(BaseModel):
-    """Schema for audit log entry"""
-    incident_id: str
-    old_key: str
-    new_key: str
-    rotation_timestamp: datetime
+# class RotationAuditLog(BaseModel):
+#     """Schema for audit log entry"""
+#     incident_id: str
+#     old_key: str
+#     new_key: str
+#     rotation_timestamp: datetime
+#     iam_user: str
+#     policy_level: str
+#     rotation_time_ms: int
+#     status: str
+
+
+# class AuditLogResponse(BaseModel):
+#     incident_id: str
+#     status: str
+#     message: str
+
+
+class KeyAnalysisResponse(BaseModel):
     iam_user: str
-    policy_level: str
-    rotation_time_ms: int
     status: str
+    message: str

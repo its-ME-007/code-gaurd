@@ -3,10 +3,10 @@ Error handling utilities
 """
 from typing import Dict, Any, Optional
 
-from app.core.logging_config import setup_logging
+# from app.core.logging_config import setup_logging
 
 
-logger = setup_logging()
+# logger = setup_logging()
 
 
 class RotationError(Exception):
@@ -73,7 +73,7 @@ def handle_aws_error(aws_error: Exception) -> Dict[str, Any]:
     error_code = aws_error.response.get("Error", {}).get("Code", "Unknown") if hasattr(aws_error, "response") else "Unknown"
     error_message = str(aws_error)
     
-    logger.error(f"AWS Error [{error_code}]: {error_message}")
+    # logger.error(f"AWS Error [{error_code}]: {error_message}")
     
     # Map AWS errors to appropriate responses
     error_map = {

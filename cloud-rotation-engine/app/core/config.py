@@ -1,49 +1,54 @@
-"""
-Configuration management for Cloud Key Rotation Engine
-"""
-import os
 from pydantic_settings import BaseSettings
+from functools import lru_cache
 from typing import List
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables"""
-    
     # Application
-    APP_NAME: str = "Cloud Key Rotation Engine"
-    VERSION: str = "1.0.0"
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
+    host: str = "0.0.0.0"
+    port: int = 8000
+    log_level: str = "INFO"
     
     # AWS Configuration
-    AWS_REGION: str = os.getenv("AWS_REGION", "us-east-1")
-    AWS_ACCESS_KEY_ID: str = os.getenv("AWS_ACCESS_KEY_ID", "")
-    AWS_SECRET_ACCESS_KEY: str = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-    
-    # Logging
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FILE: str = os.getenv("LOG_FILE", "logs/rotation.log")
+    aws_region: str = "us-east-1"
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    dry_run: bool = False
     
     # CORS
-    CORS_ORIGINS: List[str] = [
-        "http://localhost",
-        "http://localhost:3000",
-        "http://localhost:8000",
-    ]
+    cors_origins: List[str] = ["http://localhost", "http://localhost:3000", "http://localhost:8000"]
     
     # Security
-    API_KEY_ENABLED: bool = os.getenv("API_KEY_ENABLED", "false").lower() == "true"
-    API_KEY: str = os.getenv("API_KEY", "")
+    api_key_enabled: bool = False
+    api_key: str = ""
     
-    # Feature flags
-    GRACEFUL_FAILURE_HANDLING: bool = True
-    AUDIT_LOGGING_ENABLED: bool = True
-    KEY_AGE_ANALYSIS_ENABLED: bool = True
+    # Feature Flags
+    graceful_failure_handling: bool = True
+    audit_logging_enabled: bool = True
+    key_age_analysis_enabled: bool = True
+    
+    # Demo User Credentials
+    demo_access_key_id: str = ""
+    demo_secret_access_key: str = ""
+    
+    # API Config
+    api_title: str = "Cloud Key Rotation Engine"
+    api_version: str = "1.0.0"
     
     class Config:
         env_file = ".env"
-        case_sensitive = True
+        case_sensitive = False
+        extra = "ignore"
+    
+    @property
+    def demo_iam_user(self) -> str:
+        """IAM username for demo user"""
+        return "demo-user"
 
 
-# Global settings instance
-settings = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

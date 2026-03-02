@@ -3,60 +3,42 @@ Cloud Key Rotation Engine - Main FastAPI Application
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-
 from app.core.config import settings
-from app.core.logging_config import setup_logging
 from app.api import routes
+import boto3
 
-
-# Setup logging
-logger = setup_logging()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifecycle manager"""
-    logger.info("🚀 Cloud Key Rotation Engine starting...")
-    yield
-    logger.info("🛑 Cloud Key Rotation Engine shutting down...")
-
-
-# Initialize FastAPI app
 app = FastAPI(
     title="Cloud Key Rotation Engine",
     description="Deterministic AWS IAM Access Key Lifecycle Manager",
     version="1.0.0",
-    lifespan=lifespan
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
-# CORS configuration
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Initialize boto3 session with explicit credentials from settings
+boto3.setup_default_session(
+    aws_access_key_id=settings.aws_access_key_id,
+    aws_secret_access_key=settings.aws_secret_access_key,
+    region_name=settings.aws_region
+)
+
 # Include routes
 app.include_router(routes.router)
 
-
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "cloud-key-rotation-engine"
-    }
-
+    return {"status": "healthy", "service": "rotation-engine"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host=settings.HOST,
-        port=settings.PORT,
-        log_level=settings.LOG_LEVEL.lower()
-    )
+    uvicorn.run(app, host=settings.host, port=settings.port)

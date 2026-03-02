@@ -1,70 +1,77 @@
 """
 Policy classifier - determines privilege level from IAM policies
 """
-from typing import Literal
-from app.core.logging_config import setup_logging
-
-
-logger = setup_logging()
+from typing import List
 
 
 class PolicyClassifier:
     """Deterministically classifies IAM privilege levels"""
     
-    # Policy name mappings to privilege levels
-    POLICY_MAPPINGS = {
-        "AdministratorAccess": "AdministratorAccess",
-        "PowerUserAccess": "PowerUserAccess",
-        "SecurityAudit": "Custom",
-        "ReadOnlyAccess": "Custom",
-    }
+    def __init__(self):
+        """Initialize policy classifier with risk mappings"""
+        # Critical policies
+        self.critical_policies = [
+            "AdministratorAccess",
+            "IAMFullAccess",
+            "SecurityAudit"
+        ]
+        
+        # High risk policies
+        self.high_risk_policies = [
+            "PowerUserAccess",
+            "EC2FullAccess",
+            "RDSFullAccess",
+            "S3FullAccess"
+        ]
+        
+        # Medium risk policies
+        self.medium_risk_policies = [
+            "ReadOnlyAccess",
+            "CloudWatchLogsFullAccess"
+        ]
+        
+        # Risk level mapping
+        self.risk_mapping = {
+            "AdministratorAccess": "critical",
+            "PowerUserAccess": "high",
+            "Custom": "medium",
+            "None": "low"
+        }
     
-    RISK_MAPPING = {
-        "AdministratorAccess": "Critical",
-        "PowerUserAccess": "High",
-        "Custom": "Medium",
-        "Unknown": "Low"
-    }
-    
-    def classify_policy(self, policy_name: str) -> str:
+    def classify_policies(self, attached_policies: List[str]) -> str:
         """
-        Classify a policy name to privilege level.
+        Classify IAM privilege level based on attached policies
         
-        Returns one of:
-        - AdministratorAccess (Risk: Critical)
-        - PowerUserAccess (Risk: High)
-        - Custom (Risk: Medium)
-        - Unknown (Risk: Low)
+        Returns: "AdministratorAccess", "PowerUserAccess", "Custom", or "None"
         """
-        # Direct match
-        if policy_name in self.POLICY_MAPPINGS:
-            return self.POLICY_MAPPINGS[policy_name]
+        if not attached_policies:
+            return "None"
         
-        # Keyword matching
-        policy_lower = policy_name.lower()
+        # Check for critical policies
+        for policy in attached_policies:
+            if policy in self.critical_policies:
+                return "AdministratorAccess"
         
-        if "admin" in policy_lower:
-            return "AdministratorAccess"
-        elif "poweruser" in policy_lower:
-            return "PowerUserAccess"
-        elif any(keyword in policy_lower for keyword in ["custom", "inline"]):
-            return "Custom"
+        # Check for high-risk policies
+        for policy in attached_policies:
+            if policy in self.high_risk_policies:
+                return "PowerUserAccess"
         
-        return "Unknown"
+        # Check for medium-risk or custom policies
+        for policy in attached_policies:
+            if policy in self.medium_risk_policies or not policy.startswith("AWS"):
+                return "Custom"
+        
+        return "Custom"
     
     def get_risk_level(self, policy_level: str) -> str:
-        """Get risk level from privilege level"""
-        return self.RISK_MAPPING.get(policy_level, "Low")
+        """Map policy level to risk level"""
+        return self.risk_mapping.get(policy_level, "medium")
     
     def should_rotate(self, policy_level: str, reported_risk: str) -> bool:
         """
         Determine if key should be rotated based on policy level
         and reported risk level.
-        
-        Always rotates if:
-        - Policy level is AdministratorAccess
-        - Policy level is PowerUserAccess
-        - Reported risk is critical or high
         """
         risk_score = {
             "low": 1,
@@ -77,7 +84,7 @@ class PolicyClassifier:
             "AdministratorAccess": 4,
             "PowerUserAccess": 3,
             "Custom": 2,
-            "Unknown": 1
+            "None": 1
         }
         
         reported_score = risk_score.get(reported_risk.lower(), 1)
