@@ -2,7 +2,8 @@
 API routes for Cloud Key Rotation Engine
 """
 from fastapi import APIRouter, HTTPException
-from app.api.schemas import RotationRequest, RotationResponse
+from fastapi.responses import JSONResponse
+from app.api.schemas import RotationRequest
 from app.services.rotation_service import RotationService
 
 router = APIRouter(prefix="/api/v1", tags=["rotation"])
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/api/v1", tags=["rotation"])
 rotation_service = RotationService()
 
 
-@router.post("/rotate", response_model=RotationResponse)
+@router.post("/rotate")
 async def rotate_access_key(request: RotationRequest):
     """
     Rotate a compromised AWS access key
@@ -34,7 +35,7 @@ async def rotate_access_key(request: RotationRequest):
                 detail=result.get("message", result.get("reason", "Rotation failed"))
             )
         
-        return result
+        return JSONResponse(content=result)
         
     except HTTPException:
         raise
@@ -48,11 +49,36 @@ async def rotate_access_key(request: RotationRequest):
 @router.get("/audit/{incident_id}")
 async def get_audit_log(incident_id: str):
     """Get audit log for a specific incident"""
-    return {
-        "incident_id": incident_id,
-        "status": "not_implemented",
-        "message": "Audit log retrieval not yet implemented"
-    }
+    incident = rotation_service.audit_service.get_incident(incident_id)
+    
+    if not incident:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Audit log not found for incident: {incident_id}"
+        )
+    
+    return JSONResponse(content=incident)
+
+
+@router.get("/audit")
+async def get_all_audit_logs():
+    """Get all audit logs"""
+    logs = rotation_service.audit_service.get_all_incidents()
+    return JSONResponse(content={
+        "total": len(logs),
+        "incidents": logs
+    })
+
+
+@router.get("/user/{iam_user}/audit")
+async def get_user_audit_logs(iam_user: str):
+    """Get all audit logs for a specific IAM user"""
+    logs = rotation_service.audit_service.get_user_incidents(iam_user)
+    return JSONResponse(content={
+        "iam_user": iam_user,
+        "total": len(logs),
+        "incidents": logs
+    })
 
 
 @router.get("/user/{iam_user}/keys")

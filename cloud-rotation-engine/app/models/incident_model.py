@@ -1,41 +1,50 @@
 """
-Incident data models for persistence/tracking
+Incident data model for audit logging
 """
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional
 
 
-@dataclass
 class IncidentRecord:
-    """Represents a rotation incident record"""
-    incident_id: str
-    iam_user: str
-    access_key_id: str
-    risk_level: Literal["low", "medium", "high", "critical"]
-    created_at: datetime
-    rotated_at: Optional[datetime] = None
-    new_key_id: Optional[str] = None
-    policy_level: Optional[str] = None
-    status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
-    error_message: Optional[str] = None
-    rotation_time_ms: Optional[int] = None
-
-
-@dataclass
-class AccessKeyRecord:
-    """Represents an access key record"""
-    access_key_id: str
-    iam_user: str
-    created_date: datetime
-    status: Literal["Active", "Inactive"]
-    age_days: Optional[int] = None
-
-
-@dataclass
-class PolicyRecord:
-    """Represents an IAM policy record"""
-    policy_name: str
-    policy_type: Literal["Managed", "Inline"]
-    privilege_level: str
-    risk_level: str
+    """Data model for rotation incident tracking"""
+    
+    def __init__(
+        self,
+        incident_id: str,
+        iam_user: str,
+        access_key_id: str,
+        risk_level: str,
+        rotation_status: str,
+        policy_level: str,
+        timestamp: str,  # Changed from datetime to string
+        rotation_time_ms: Optional[int] = None,
+        old_key_deactivated: bool = False,
+        new_key_id: Optional[str] = None,
+        error_message: Optional[str] = None
+    ):
+        self.incident_id = incident_id
+        self.iam_user = iam_user
+        self.access_key_id = access_key_id
+        self.risk_level = risk_level
+        self.rotation_status = rotation_status
+        self.policy_level = policy_level
+        self.timestamp = timestamp
+        self.rotation_time_ms = rotation_time_ms
+        self.old_key_deactivated = old_key_deactivated
+        self.new_key_id = new_key_id
+        self.error_message = error_message
+    
+    def to_dict(self) -> dict:
+        """Convert incident record to dictionary"""
+        return {
+            "incident_id": self.incident_id,
+            "iam_user": self.iam_user,
+            "access_key_id": self.access_key_id,
+            "risk_level": self.risk_level,
+            "rotation_status": self.rotation_status,
+            "policy_level": self.policy_level,
+            "timestamp": self.timestamp,
+            "rotation_time_ms": self.rotation_time_ms,
+            "old_key_deactivated": self.old_key_deactivated,
+            "new_key_id": self.new_key_id,
+            "error_message": self.error_message
+        }
