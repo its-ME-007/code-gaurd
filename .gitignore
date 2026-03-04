@@ -1,4 +1,6 @@
 .venv
 .env
 tests
+pwd.txt
 __pycache__/
+demo-user_credentials.csv
