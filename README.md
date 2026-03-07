@@ -1,12 +1,33 @@
-# Cloud Key Rotation Engine
+# Cloud Key Rotation Engine + Secret Manager
 
-## Overview
+**Date:** March 8, 2026 | **Status:** ✅ Production Ready
 
-A deterministic AWS IAM Access Key Lifecycle Manager that automates the rotation of compromised credentials while maintaining audit compliance and operational safety.
+A deterministic AWS IAM Access Key Lifecycle Manager that automates the rotation of compromised credentials while maintaining audit compliance, operational safety, and **secure secret storage**.
 
-**Positioning:** Transforms secret detection from passive identification into active remediation through autonomous, auditable credential lifecycle management.
+**Positioning:** Transforms secret detection from passive identification into active remediation through autonomous, auditable credential lifecycle management + secure centralized secret storage.
 
-## Features
+---
+
+## 📚 Documentation Structure
+
+This project has two main documented components:
+
+### 🔄 Cloud Key Rotation Engine
+- **Location:** `cloud-rotation-engine/`
+- **Docs:** [cloud-rotation-engine/docs/README.md](cloud-rotation-engine/docs/README.md)
+- **Purpose:** Automated AWS IAM key rotation with audit compliance
+
+### 🔐 Secret Manager
+- **Location:** `cloud-rotation-engine/app/services/secret_manager.py`
+- **Quick Start:** [cloud-rotation-engine/docs/README_QUICK_START.md](cloud-rotation-engine/docs/README_QUICK_START.md)
+- **Complete Guide:** [cloud-rotation-engine/docs/README.md](cloud-rotation-engine/docs/README.md) (Secret Manager section)
+- **Purpose:** AWS Secrets Manager integration with automatic JSON/simple string classification
+
+---
+
+## 🚀 Project Overview
+
+### Rotation Engine Features
 
 - **Access Key Validation** – Confirms key ownership and retrieves attached IAM policies
 - **Deterministic Rotation** – Creates new keys, deactivates old ones, and maintains immutable audit trails
@@ -16,14 +37,29 @@ A deterministic AWS IAM Access Key Lifecycle Manager that automates the rotation
 - **Graceful Error Handling** – Well-defined error contracts for system resilience
 - **Key Age Analysis** – Tracks credential age and rotation history
 
+### Secret Manager Features
+
+- **Automatic Secret Classification** – Detects JSON vs simple string format automatically
+- **Secure Storage** – AWS Secrets Manager integration with encryption at rest
+- **Smart Retrieval** – Auto-parses JSON, returns simple strings as-is
+- **REST API** – 5 endpoints for store, retrieve, delete, list, classify
+- **Multiple Integration Points** – Convenience functions, service class, REST API, direct imports
+- **Environment Segmentation** – Separate secrets by dev/staging/production
+- **Error Handling** – Custom exceptions for proper error management
+
+---
+
 ## Design Philosophy
 
 🛡️ **Deterministic > AI** – Pure cloud automation, no ML decision-making  
 🏗️ **Safe Automation > Aggressive Automation** – Controlled IAM scope, no destructive surprises  
 📝 **Observable & Auditable** – Every action logged with incident correlation  
 🔐 **Controlled IAM Scope** – Least-privilege permissions, no policy editing  
+💾 **Centralized Secrets** – All credentials securely stored in AWS Secrets Manager  
 
-## Quick Start
+---
+
+## 🎯 Quick Start
 
 ### Prerequisites
 
@@ -325,8 +361,198 @@ aws iam list-access-keys --user-name dev-user
 - **Key Deletion:** ~75ms
 - **Policy Retrieval:** ~100-150ms
 
+---
+
+# Secret Manager Integration
+
+## Overview
+
+A comprehensive AWS Secrets Manager integration layer that automatically classifies, stores, and retrieves secrets with full support for both JSON and simple string formats.
+
+**Features:**
+- ✅ Automatic secret classification (JSON detection)
+- ✅ Secure storage with AWS encryption
+- ✅ Smart retrieval with auto-parsing
+- ✅ REST API endpoints (store, retrieve, delete, list, classify)
+- ✅ Multiple integration points (Python SDK, REST, convenience functions)
+- ✅ Environment segmentation (dev/staging/production)
+- ✅ Comprehensive error handling
+
+## Quick Usage
+
+### Store a Secret
+```python
+from app.services import store_api_key
+store_api_key("openai", "sk-abc123...", "production")
+```
+
+### Retrieve a Secret
+```python
+from app.services import retrieve_api_key
+api_key = retrieve_api_key("openai", "production")
+```
+
+### Use REST API
+```bash
+# Store
+curl -X POST http://localhost:8000/api/v1/secrets/store \
+  -H "Content-Type: application/json" \
+  -d '{
+    "secret_id": "codeguard/gemini/prod",
+    "secret_value": "{\"api_key\": \"AIza...\"}",
+    "service_name": "gemini"
+  }'
+
+# Retrieve
+curl http://localhost:8000/api/v1/secrets/codeguard/gemini/prod
+
+# List secrets
+curl http://localhost:8000/api/v1/secrets?service_filter=gemini
+```
+
+## Integration with Rotation Service
+
+After rotating an AWS key:
+
+```python
+from app.services import store_credentials_json
+
+rotated_credentials = {
+    "access_key_id": "AKIA_NEW_...",
+    "secret_access_key": "...",
+    "rotation_datetime": "2026-03-08T10:30:00Z"
+}
+
+store_credentials_json("aws", rotated_credentials, "production")
+```
+
+## Secret Naming Convention
+
+All secrets use: `codeguard/{service_name}/{environment}`
+
+**Examples:**
+- `codeguard/openai/production`
+- `codeguard/stripe/staging`
+- `codeguard/gemini/dev`
+- `codeguard/aws/production`
+
+## REST API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/api/v1/secrets/store` | Store a secret |
+| GET | `/api/v1/secrets/{secret_id}` | Retrieve a secret |
+| DELETE | `/api/v1/secrets/{secret_id}` | Delete a secret |
+| GET | `/api/v1/secrets` | List secrets (filterable) |
+| POST | `/api/v1/secrets/classify` | Classify secret format |
+
+## Secret Classification
+
+The system automatically detects format:
+
+```python
+from app.services import DetectedSecretClassifier
+
+classifier = DetectedSecretClassifier()
+
+# Check format
+is_json = classifier.is_json_secret('{"key": "value"}')  # True
+is_json = classifier.is_json_secret('sk-abc123')          # False
+```
+
+| Format | Example | Handled As |
+|--------|---------|-----------|
+| simple | `sk-abc123def456` | String |
+| simple | `AIzaSyB_1234567890...` | String |
+| json | `{"api_key": "..."}` | Dict (auto-parsed) |
+| json | `[{"id": 1}]` | List (auto-parsed) |
+
+## Supported Services
+
+✅ OpenAI  
+✅ Google Gemini  
+✅ Stripe  
+✅ AWS IAM  
+✅ SendGrid  
+✅ Any custom API  
+
+## Error Handling
+
+```python
+from app.services.secret_manager import SecretRetrievalError
+
+try:
+    api_key = retrieve_api_key("openai", "production")
+except SecretRetrievalError as e:
+    print(f"Failed: {e}")
+```
+
+## AWS Configuration
+
+### IAM Permissions
+
+Attach: **`SecretsManagerReadWrite`** (AWS managed policy)
+
+### Environment Variables
+
+```
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG+...
+```
+
+---
+
+## Documentation Files
+
+### Root Level
+- **README.md** - This file (project overview)
+
+### In `cloud-rotation-engine/docs/`
+- **README.md** - Complete Secret Manager implementation guide
+- **README_QUICK_START.md** - 5-minute quick start guide
+- **ARCHITECTURE.md** - System architecture with diagrams
+- **SECRET_MANAGER.md** - Detailed API reference
+
+## Security Features
+
+### Rotation Engine
+✅ Least-privilege IAM scope  
+✅ Immutable audit trails  
+✅ No policy modifications  
+✅ Deterministic workflows  
+
+### Secret Manager
+✅ AWS encryption at rest  
+✅ TLS for all communications  
+✅ IAM-based access control  
+✅ Version history tracking  
+✅ Recovery periods for deletion  
+✅ Tag-based access policies  
+
+---
+
+## Implementation Statistics
+
+| Component | Metric | Value |
+|-----------|--------|-------|
+| **Rotation Engine** | API Endpoints | 3 |
+| | Pydantic Models | 3 |
+| | Exception Classes | Custom types |
+| **Secret Manager** | Main Service | 570 lines |
+| | API Endpoints | 5 |
+| | Pydantic Models | 5 |
+| | Exception Classes | 3 |
+| | Utility Functions | 4 |
+| | Examples | 8 |
+| | Documentation | 1,200+ lines |
+| **Total** | Combined Code | 1,300+ lines |
+
+---
+
 ## Optional Enhancements (Future)
 
+### Rotation Engine
 - [ ] Batch rotation for multiple compromised keys
 - [ ] Key age-based rotation policies
 - [ ] MFA-protected rotation (requires MFA device)
@@ -334,6 +560,59 @@ aws iam list-access-keys --user-name dev-user
 - [ ] Slack/email notifications on rotation
 - [ ] Cross-account key rotation
 - [ ] CloudTrail integration
+
+### Secret Manager
+- [ ] Automatic secret rotation scheduling
+- [ ] Secret expiration alerts
+- [ ] Real-time access audit logging
+- [ ] Slack/email notifications
+- [ ] Cross-region replication
+
+---
+
+## Project Structure
+
+```
+code-gaurd/
+├── README.md                          # This file (project overview)
+├── requirements.txt                   # Python dependencies
+├── .env                               # Environment configuration
+│
+└── cloud-rotation-engine/
+    ├── app/
+    │   ├── main.py                    # FastAPI entry point
+    │   ├── api/
+    │   │   ├── routes.py              # All API endpoints
+    │   │   └── schemas.py             # Pydantic models
+    │   ├── services/
+    │   │   ├── rotation_service.py    # Rotation orchestration
+    │   │   ├── secret_manager.py      # Secret management (NEW)
+    │   │   ├── secret_manager_examples.py  # Examples (NEW)
+    │   │   ├── iam_validator.py       # Key validation
+    │   │   ├── policy_classifier.py   # Policy classification
+    │   │   └── audit_service.py       # Audit logging
+    │   ├── core/
+    │   │   ├── config.py              # Settings
+    │   │   ├── logging_config.py      # Logging setup
+    │   │   └── security.py            # Security utilities
+    │   ├── models/
+    │   │   └── incident_model.py      # Data models
+    │   └── utils/
+    │       ├── time_utils.py          # Time utilities
+    │       └── error_handlers.py      # Error handling
+    ├── tests/
+    │   ├── test_rotation.py           # Rotation tests
+    │   ├── test_validator.py          # Validator tests
+    │   └── test_credentials.py        # Credential tests
+    └── docs/
+        ├── README.md                  # Secret Manager complete guide
+        ├── README_QUICK_START.md      # Quick start (5 min)
+        ├── ARCHITECTURE.md            # Architecture diagrams
+        ├── SECRET_MANAGER.md          # Detailed API reference
+        └── AWS_setup.md               # AWS configuration
+```
+
+---
 
 ## Contributing
 
@@ -346,10 +625,16 @@ MIT
 ## Support
 
 For issues and questions:
-1. Check logs in `logs/rotation.log`
-2. Review this README's Troubleshooting section
+
+**Rotation Engine:**
+1. Check logs in `cloud-rotation-engine/logs/rotation.log`
+2. Review rotation troubleshooting in [cloud-rotation-engine/docs/README.md](cloud-rotation-engine/docs/README.md)
+
+**Secret Manager:**
+1. Check AWS connectivity: `python -c "import boto3; print(boto3.__version__)"`
+2. Review [cloud-rotation-engine/docs/README_QUICK_START.md](cloud-rotation-engine/docs/README_QUICK_START.md)
 3. File an issue with error details and AWS region
 
 ---
 
-**Built with:** FastAPI • Boto3 • Pydantic • Pytest
+**Built with:** FastAPI • Boto3 • Pydantic • Pytest • AWS Secrets Manager

@@ -70,3 +70,65 @@ class KeyAnalysisResponse(BaseModel):
     iam_user: str
     status: str
     message: str
+
+
+# ============================================================================
+# Secret Management Schemas
+# ============================================================================
+
+class SecretStoreRequest(BaseModel):
+    """Schema for storing a secret"""
+    secret_id: str = Field(..., description="Unique secret identifier (e.g., 'codeguard/gemini/project-x')")
+    secret_value: str = Field(..., description="The secret value (JSON or simple string)")
+    service_name: str = Field(..., description="Service providing/using this secret")
+    environment: str = Field("default", description="Environment context (dev/staging/production)")
+    description: Optional[str] = Field(None, description="Optional description")
+    tags: Optional[dict] = Field(None, description="Optional tags for organization")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "secret_id": "codeguard/gemini/project-alpha",
+                "secret_value": '{"api_key": "AIza...", "project_id": "xyz"}',
+                "service_name": "gemini",
+                "environment": "production",
+                "description": "Google Gemini API credentials"
+            }
+        }
+
+
+class SecretStoreResponse(BaseModel):
+    """Schema for secret storage response"""
+    status: str = Field(..., description="success or error")
+    operation: Optional[str] = Field(None, description="created or updated")
+    secret_id: str = Field(..., description="The stored secret ID")
+    secret_type: str = Field(..., description="json or simple")
+    version_id: Optional[str] = Field(None, description="AWS secret version ID")
+    timestamp: str = Field(..., description="Storage timestamp")
+    message: str = Field(..., description="Descriptive message")
+
+
+class SecretRetrieveResponse(BaseModel):
+    """Schema for secret retrieval response"""
+    status: str = Field(..., description="success or error")
+    secret_id: str = Field(..., description="The retrieved secret ID")
+    value: Optional[dict] = Field(None, description="The secret value (parsed if JSON)")
+    secret_type: str = Field(..., description="json or simple")
+    metadata: Optional[dict] = Field(None, description="Secret metadata")
+    version_id: Optional[str] = Field(None, description="AWS version ID")
+    message: str = Field(..., description="Descriptive message")
+
+
+class SecretDeleteRequest(BaseModel):
+    """Schema for secret deletion"""
+    secret_id: str = Field(..., description="The secret to delete")
+    force_delete: bool = Field(False, description="Force immediate deletion")
+    recovery_days: int = Field(7, description="Recovery period in days")
+
+
+class SecretClassificationResponse(BaseModel):
+    """Schema for secret classification response"""
+    status: str = Field(..., description="success or error")
+    secret_type: str = Field(..., description="json or simple")
+    is_json: bool = Field(..., description="Whether the secret is JSON format")
+    message: str = Field(..., description="Descriptive message")
