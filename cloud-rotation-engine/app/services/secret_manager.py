@@ -384,11 +384,20 @@ class SecretsManagerService:
                     if tags.get("Service") != service_filter:
                         continue
                 
+                # Convert datetime objects to ISO format strings for JSON serialization
+                created_date = secret.get("CreatedDate")
+                last_updated = secret.get("LastUpdatedDate")
+
+                if created_date:
+                    created_date = created_date.isoformat() if hasattr(created_date, 'isoformat') else str(created_date)
+                if last_updated:
+                    last_updated = last_updated.isoformat() if hasattr(last_updated, 'isoformat') else str(last_updated)
+
                 filtered_secrets.append({
                     "name": secret.get("Name"),
                     "arn": secret.get("ARN"),
-                    "created_date": secret.get("CreatedDate"),
-                    "last_updated": secret.get("LastUpdatedDate"),
+                    "created_date": created_date,
+                    "last_updated": last_updated,
                     "tags": secret.get("Tags", [])
                 })
             

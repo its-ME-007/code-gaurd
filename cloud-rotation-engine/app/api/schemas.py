@@ -132,3 +132,63 @@ class SecretClassificationResponse(BaseModel):
     secret_type: str = Field(..., description="json or simple")
     is_json: bool = Field(..., description="Whether the secret is JSON format")
     message: str = Field(..., description="Descriptive message")
+
+
+class CodeGenerationRequest(BaseModel):
+    """Schema for code generation request"""
+    secret_id: str = Field(..., description="Secret identifier (e.g., codeguard/gemini/prod)")
+    language: str = Field("python", description="Programming language: python, javascript, go, java, php, csharp")
+    region: Optional[str] = Field("us-east-1", description="AWS region")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "secret_id": "codeguard/openai/production",
+                "language": "python",
+                "region": "us-east-1"
+            }
+        }
+
+
+class CodeGenerationResponse(BaseModel):
+    """Schema for code generation response"""
+    status: str = Field(..., description="success")
+    secret_id: str = Field(..., description="The secret identifier")
+    language: str = Field(..., description="Programming language")
+    code: str = Field(..., description="Generated code snippet")
+    message: str = Field(..., description="Descriptive message")
+
+
+class SecretStoreAndGenerateRequest(BaseModel):
+    """Schema for storing secret and generating retrieval code in one action"""
+    secret_id: str = Field(..., description="Secret identifier (e.g., codeguard/openai/prod)")
+    secret_value: str = Field(..., description="The secret value to store")
+    service_name: str = Field(..., description="Service name (e.g., openai, gemini, stripe)")
+    language: str = Field("python", description="Language for code generation")
+    environment: str = Field("default", description="Environment (dev, staging, production)")
+    description: Optional[str] = Field(None, description="Optional description of the secret")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "secret_id": "codeguard/openai/production",
+                "secret_value": "sk-proj-abc123...",
+                "service_name": "openai",
+                "language": "python",
+                "environment": "production"
+            }
+        }
+
+
+class SecretStoreAndGenerateResponse(BaseModel):
+    """Schema for combined store and generate response"""
+    status: str = Field(..., description="success or error")
+    secret_id: str = Field(..., description="The stored secret ID")
+    secret_type: str = Field(..., description="json or simple")
+    version_id: Optional[str] = Field(None, description="AWS secret version ID")
+    operation: str = Field(..., description="The operation performed")
+    storage_message: str = Field(..., description="Storage operation message")
+    language: str = Field(..., description="Language used for code generation")
+    code: str = Field(..., description="Generated code snippet")
+    code_message: str = Field(..., description="Code generation message")
+    timestamp: str = Field(..., description="Operation timestamp")

@@ -8,7 +8,11 @@ from app.api.schemas import (
     SecretStoreRequest,
     SecretRetrieveResponse,
     SecretDeleteRequest,
-    SecretClassificationResponse
+    SecretClassificationResponse,
+    CodeGenerationRequest,
+    CodeGenerationResponse,
+    SecretStoreAndGenerateRequest,
+    SecretStoreAndGenerateResponse
 )
 from app.services.rotation_service import RotationService
 from app.services.secret_manager import (
@@ -18,6 +22,8 @@ from app.services.secret_manager import (
     SecretRetrievalError,
     SecretClassificationError
 )
+from app.services.secret_code_generator import SecretCodeGenerator
+from app.core.config import settings
 
 router = APIRouter(prefix="/api/v1", tags=["rotation"])
 
@@ -261,3 +267,128 @@ async def classify_secret(secret_value: str):
             status_code=500,
             detail=f"Unexpected error: {str(e)}"
         )
+
+
+@router.post("/secrets/generate-code")
+async def generate_access_code(request: CodeGenerationRequest):
+    """
+    Generate language-specific code to retrieve a secret.
+    
+    Supports multiple programming languages:
+    - **python** (py)
+    - **javascript** (js, node)
+    - **go**
+    - **java**
+    - **php**
+    - **csharp** (cs)
+    
+    Returns ready-to-use code snippet that can be copied directly into your application.
+    
+    Args:
+        - **secret_id**: Secret identifier (e.g., "codeguard/gemini/production")
+        - **language**: Programming language (default: python)
+        - **region**: AWS region (default: us-east-1)
+    
+    Returns:
+        Generated code snippet for the specified language
+    """
+    try:
+        gen = SecretCodeGenerator()
+        
+        code = gen.generate_code(
+            secret_id=request.secret_id,
+            language=request.language or "python",
+            region=request.region or "us-east-1"
+        )
+        
+        return JSONResponse(content={
+            "status": "success",
+            "secret_id": request.secret_id,
+            "language": request.language or "python",
+            "code": code,
+            "message": f"Code snippet generated for {request.language or 'python'}"
+        })
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate code: {str(e)}"
+        )
+
+
+@router.post("/secrets/store-and-generate-code")
+async def store_secret_and_generate_code(request: SecretStoreAndGenerateRequest):
+    """
+    Store a secret in AWS Secrets Manager AND generate retrieval code in one action.
+    
+    This combines two operations:
+    1. Store the secret securely with automatic format detection
+    2. Generate language-specific code snippet for retrieving the secret
+    
+    Supported languages: python, javascript, go, java, php, csharp
+    
+    Args:
+        - **secret_id**: Unique secret identifier (e.g., "codeguard/openai/production")
+        - **secret_value**: The secret value to store (JSON or simple string)
+        - **service_name**: Service name (openai, gemini, stripe, etc.)
+        - **language**: Language for code generation (default: python)
+        - **environment**: Environment context (dev, staging, production)
+        - **description**: Optional description
+    
+    Returns:
+        Combined response with storage result AND generated code snippet
+    """
+    try:
+        from datetime import datetime
+        
+        # Step 1: Store the secret
+        store_result = secrets_service.store_secret(
+            secret_id=request.secret_id,
+            secret_value=request.secret_value,
+            service_name=request.service_name,
+            environment=request.environment,
+            description=request.description
+        )
+        
+        # Step 2: Generate code for the secret
+        gen = SecretCodeGenerator()
+        code = gen.generate_code(
+            secret_id=request.secret_id,
+            language=request.language or "python",
+            region=settings.aws_region
+        )
+        
+        # Step 3: Return combined response
+        return JSONResponse(content={
+            "status": "success",
+            "secret_id": request.secret_id,
+            "secret_type": store_result.get("secret_type", "unknown"),
+            "version_id": store_result.get("version_id"),
+            "operation": "store_and_generate",
+            "storage_message": store_result.get("message", "Secret stored successfully"),
+            "language": request.language or "python",
+            "code": code,
+            "code_message": f"Code snippet generated for {request.language or 'python'}",
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+    except SecretStorageError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Secret storage failed: {str(e)}"
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Code generation failed: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Operation failed: {str(e)}"
+        )
+
