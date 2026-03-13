@@ -64,16 +64,6 @@ docs/
 README.md
 *.md
 
-# Docker
-Dockerfile*
-docker-compose*.yml
-.dockerignore
-
-# CI/CD
-.github/
-.gitlab-ci.yml
-.travis.yml
-
 # Temporary
 tmp/
 temp/
@@ -83,3 +73,5 @@ temp/
 demo-user_credentials.csv
 pwd.txt
 audit_records.db
+pre-commit-engine/
+cloud-engine/

@@ -31,12 +31,12 @@ COPY --from=builder /app/requirements.txt .
 # Install Python dependencies from wheels
 RUN pip install --no-cache /wheels/*
 
-# Copy application code
-COPY . .
+# Copy application code - structure: /app/app/main.py, /app/app/api, etc.
+COPY cloud-rotation-engine/app ./app
 
 # Create data directory for SQLite database
-RUN mkdir -p /app/data && \
-    chmod 755 /app/data && \
+RUN mkdir -p data && \
+    chmod 755 data && \
     chown -R nobody:nogroup /app
 
 # Switch to non-root user

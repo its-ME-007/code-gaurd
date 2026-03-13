@@ -21,12 +21,12 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy application code - structure: /app/app/main.py, /app/app/api, etc.
+COPY cloud-rotation-engine/app ./app
 
 # Create data directory for SQLite database
-RUN mkdir -p /app/data && \
-    chmod 755 /app/data
+RUN mkdir -p data && \
+    chmod 755 data
 
 # Expose port
 EXPOSE 8000
