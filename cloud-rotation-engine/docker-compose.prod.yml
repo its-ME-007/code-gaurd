@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  cloud-rotation-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: cloud-rotation-engine-prod
+    ports:
+      - "8000:8000"
+    environment:
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - cloud-rotation-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+networks:
+  cloud-rotation-network:
+    driver: bridge

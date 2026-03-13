@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api import routes
+from app.db.init import initialize_database
 import boto3
 
 app = FastAPI(
@@ -31,6 +32,13 @@ boto3.setup_default_session(
     aws_secret_access_key=settings.aws_secret_access_key,
     region_name=settings.aws_region
 )
+
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on app startup"""
+    initialize_database()
+    print("🚀 Cloud Key Rotation Engine started")
 
 # Include routes
 app.include_router(routes.router)
