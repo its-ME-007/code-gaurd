@@ -14,7 +14,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       PYTHONUNBUFFERED: 1
     volumes:
-      - ./data:/app/data
+      - ./cloud-rotation-engine/data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
