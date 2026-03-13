@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     api_title: str = "Cloud Key Rotation Engine"
     api_version: str = "1.0.0"
     
+    # Database Configuration
+    database_url: str = "sqlite:///./audit_records.db"
+    database_echo: bool = False  # Set to True for SQL logging
+    
     class Config:
         env_file = ".env"
         case_sensitive = False

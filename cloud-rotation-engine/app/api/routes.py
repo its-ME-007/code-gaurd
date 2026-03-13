@@ -15,6 +15,7 @@ from app.api.schemas import (
     SecretStoreAndGenerateResponse
 )
 from app.services.rotation_service import RotationService
+from app.services.audit_service import AuditService
 from app.services.secret_manager import (
     SecretsManagerService,
     DetectedSecretClassifier,
@@ -24,10 +25,13 @@ from app.services.secret_manager import (
 )
 from app.services.secret_code_generator import SecretCodeGenerator
 from app.core.config import settings
+from datetime import datetime
+import time
 
 router = APIRouter(prefix="/api/v1", tags=["rotation"])
 
 rotation_service = RotationService()
+audit_service = AuditService()
 secrets_service = SecretsManagerService()
 classifier = DetectedSecretClassifier()
 
@@ -131,6 +135,12 @@ async def store_secret(request: SecretStoreRequest):
     - **description**: Optional description
     - **tags**: Optional tags for organization
     """
+    start_time = time.time()
+    operation_status = "failed"
+    error_msg = None
+    secret_type = None
+    version_id = None
+    
     try:
         result = secrets_service.store_secret(
             secret_id=request.secret_id,
@@ -140,16 +150,58 @@ async def store_secret(request: SecretStoreRequest):
             description=request.description,
             tags=request.tags
         )
+        
+        # Track successful operation
+        operation_status = "success"
+        secret_type = result.get("secret_type", "unknown")
+        version_id = result.get("version_id")
+        
+        # Log the operation to audit table
+        audit_service.log_secret_operation({
+            "secret_id": request.secret_id,
+            "service_name": request.service_name,
+            "environment": request.environment,
+            "operation_type": "store",
+            "operation_status": operation_status,
+            "secret_type": secret_type,
+            "version_id": version_id,
+            "description": request.description,
+            "operation_time_ms": int((time.time() - start_time) * 1000),
+            "code_generated": False
+        })
+        
         return JSONResponse(content=result)
     except SecretStorageError as e:
+        error_msg = str(e)
+        # Log failed operation
+        audit_service.log_secret_operation({
+            "secret_id": request.secret_id,
+            "service_name": request.service_name,
+            "environment": request.environment,
+            "operation_type": "store",
+            "operation_status": "failed",
+            "error_message": error_msg,
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
         raise HTTPException(
             status_code=400,
-            detail=f"Secret storage failed: {str(e)}"
+            detail=f"Secret storage failed: {error_msg}"
         )
     except Exception as e:
+        error_msg = str(e)
+        # Log failed operation
+        audit_service.log_secret_operation({
+            "secret_id": request.secret_id,
+            "service_name": request.service_name,
+            "environment": request.environment,
+            "operation_type": "store",
+            "operation_status": "failed",
+            "error_message": error_msg,
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
         raise HTTPException(
             status_code=500,
-            detail=f"Unexpected error: {str(e)}"
+            detail=f"Unexpected error: {error_msg}"
         )
 
 
@@ -342,9 +394,14 @@ async def store_secret_and_generate_code(request: SecretStoreAndGenerateRequest)
     Returns:
         Combined response with storage result AND generated code snippet
     """
+    start_time = time.time()
+    operation_status = "failed"
+    error_msg = None
+    secret_type = None
+    version_id = None
+    code_language = request.language or "python"
+    
     try:
-        from datetime import datetime
-        
         # Step 1: Store the secret
         store_result = secrets_service.store_secret(
             secret_id=request.secret_id,
@@ -354,41 +411,122 @@ async def store_secret_and_generate_code(request: SecretStoreAndGenerateRequest)
             description=request.description
         )
         
+        secret_type = store_result.get("secret_type", "unknown")
+        version_id = store_result.get("version_id")
+        
         # Step 2: Generate code for the secret
         gen = SecretCodeGenerator()
         code = gen.generate_code(
             secret_id=request.secret_id,
-            language=request.language or "python",
+            language=code_language,
             region=settings.aws_region
         )
         
-        # Step 3: Return combined response
+        # Track successful operation
+        operation_status = "success"
+        
+        # Step 3: Log the combined operation to audit table
+        audit_service.log_secret_operation({
+            "secret_id": request.secret_id,
+            "service_name": request.service_name,
+            "environment": request.environment,
+            "operation_type": "store_and_generate",
+            "operation_status": operation_status,
+            "code_language": code_language,
+            "code_generated": True,
+            "secret_type": secret_type,
+            "version_id": version_id,
+            "description": request.description,
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
+        
+        # Step 4: Return combined response
         return JSONResponse(content={
             "status": "success",
             "secret_id": request.secret_id,
-            "secret_type": store_result.get("secret_type", "unknown"),
-            "version_id": store_result.get("version_id"),
+            "secret_type": secret_type,
+            "version_id": version_id,
             "operation": "store_and_generate",
             "storage_message": store_result.get("message", "Secret stored successfully"),
-            "language": request.language or "python",
+            "language": code_language,
             "code": code,
-            "code_message": f"Code snippet generated for {request.language or 'python'}",
+            "code_message": f"Code snippet generated for {code_language}",
             "timestamp": datetime.utcnow().isoformat()
         })
         
     except SecretStorageError as e:
+        error_msg = str(e)
+        # Log failed operation
+        audit_service.log_secret_operation({
+            "secret_id": request.secret_id,
+            "service_name": request.service_name,
+            "environment": request.environment,
+            "operation_type": "store_and_generate",
+            "operation_status": "failed",
+            "code_language": code_language,
+            "code_generated": False,
+            "error_message": error_msg,
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
         raise HTTPException(
             status_code=400,
-            detail=f"Secret storage failed: {str(e)}"
+            detail=f"Secret storage failed: {error_msg}"
         )
     except ValueError as e:
+        error_msg = str(e)
+        # Log failed operation (storage may have succeeded)
+        audit_service.log_secret_operation({
+            "secret_id": request.secret_id,
+            "service_name": request.service_name,
+            "environment": request.environment,
+            "operation_type": "store_and_generate",
+            "operation_status": "partial_failure",
+            "code_language": code_language,
+            "code_generated": False,
+            "error_message": f"Code generation failed: {error_msg}",
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
         raise HTTPException(
             status_code=400,
-            detail=f"Code generation failed: {str(e)}"
+            detail=f"Code generation failed: {error_msg}"
         )
     except Exception as e:
+        error_msg = str(e)
+        # Log failed operation
+        audit_service.log_secret_operation({
+            "secret_id": request.secret_id,
+            "service_name": request.service_name,
+            "environment": request.environment,
+            "operation_type": "store_and_generate",
+            "operation_status": "failed",
+            "code_language": code_language,
+            "code_generated": False,
+            "error_message": error_msg,
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
         raise HTTPException(
             status_code=500,
-            detail=f"Operation failed: {str(e)}"
+            detail=f"Operation failed: {error_msg}"
         )
 
+
+# ============================================================================
+# Secret Audit Endpoints
+# ============================================================================
+
+@router.get("/secrets-audit/all")
+async def get_all_secret_audits(limit: int = None):
+    """
+    Get all secret storage and retrieval operations.
+    
+    Optional parameters:
+    - **limit**: Maximum number of records to return (default: all)
+    
+    Returns complete audit trail of secret operations
+    """
+    operations = audit_service.get_all_secret_operations(limit=limit)
+    
+    return JSONResponse(content={
+        "total": len(operations),
+        "operations": operations
+    })
