@@ -192,3 +192,149 @@ class SecretStoreAndGenerateResponse(BaseModel):
     code: str = Field(..., description="Generated code snippet")
     code_message: str = Field(..., description="Code generation message")
     timestamp: str = Field(..., description="Operation timestamp")
+
+
+# ============================================================================
+# Client-Driven Incident Logging Schemas (Supabase)
+# ============================================================================
+
+class DetectedSecretItem(BaseModel):
+    """Schema for a single secret to store and generate code for"""
+    type: str = Field(..., description="Type of secret (e.g., openai, aws, stripe, github)")
+    language: str = Field("python", description="Language for code generation (python, javascript, go, java, php, csharp)")
+    secret_value: str = Field(..., description="The actual secret value to store")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "type": "openai",
+                "language": "python",
+                "secret_value": "sk-proj-abc123..."
+            }
+        }
+
+
+class SecretIngestionRequest(BaseModel):
+    """Schema for batch secret ingestion with global retrieval language"""
+    secrets: list[DetectedSecretItem] = Field(..., description="Array of secrets to store")
+    retrieval_language: str = Field("python", description="Language for retrieval code (python, javascript, go, java, php, csharp)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "secrets": [
+                    {
+                        "type": "openai",
+                        "language": "python",
+                        "secret_value": "sk-proj-abc123..."
+                    },
+                    {
+                        "type": "stripe",
+                        "language": "javascript",
+                        "secret_value": "sk_live_..."
+                    }
+                ],
+                "retrieval_language": "javascript"
+            }
+        }
+
+
+class BatchSecretIngestionRequest(BaseModel):
+    """Schema for batch secret detection logging (client-driven model)"""
+    scan_id: str = Field(..., description="Unique identifier for this scan batch")
+    repo_name: str = Field(..., description="Repository or project name")
+    detected_by: str = Field(..., description="Machine or agent identifier (e.g., 'dev-machine-01')")
+    secrets: list[DetectedSecretItem] = Field(..., description="List of detected secrets")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "scan_id": "scan_2026_01",
+                "repo_name": "project-alpha",
+                "detected_by": "dev-machine-01",
+                "secrets": [
+                    {
+                        "secret_type": "gemini_api_key",
+                        "secret_hash": "hash_value_1",
+                        "file_path": "app/config.py",
+                        "line_number": 18,
+                        "risk_level": "high"
+                    },
+                    {
+                        "secret_type": "aws_access_key",
+                        "secret_hash": "hash_value_2",
+                        "file_path": "aws/client.py",
+                        "line_number": 5,
+                        "risk_level": "critical"
+                    }
+                ]
+            }
+        }
+
+
+class BatchSecretIngestionResponse(BaseModel):
+    """Response from batch secret ingestion endpoint"""
+    status: str = Field(..., description="success, partial, or error")
+    scan_id: str = Field(..., description="The scan_id from the request")
+    incidents_logged: int = Field(..., description="Number of new incidents logged")
+    duplicates_detected: int = Field(..., description="Number of duplicate secrets found")
+    incidents: Optional[list[str]] = Field(None, description="List of incident IDs created")
+    errors: Optional[list[str]] = Field(None, description="List of processing errors if any")
+    message: str = Field(..., description="Human-readable status message")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "scan_id": "scan_2026_01",
+                "incidents_logged": 2,
+                "duplicates_detected": 1,
+                "incidents": ["uuid-1", "uuid-2"],
+                "errors": None,
+                "message": "Successfully processed 2 detected secrets"
+            }
+        }
+
+
+class RemediationScriptGenerationRequest(BaseModel):
+    """Schema for generating remediation scripts after detection"""
+    incident_id: str = Field(..., description="The reported incident ID")
+    secret_value: str = Field(..., description="The actual secret (provided only by developer locally)")
+    secret_type: str = Field(..., description="Type of secret (aws, openai, etc.)")
+    service_name: str = Field(..., description="Service name")
+    language: str = Field("python", description="Language for generated script")
+    environment: str = Field("production", description="Target environment")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "incident_id": "uuid-123",
+                "secret_value": "sk-proj-abc123...",
+                "secret_type": "openai",
+                "service_name": "openai",
+                "language": "python",
+                "environment": "production"
+            }
+        }
+
+
+class RemediationScriptGenerationResponse(BaseModel):
+    """Response containing storage and retrieval scripts"""
+    status: str = Field(..., description="success or error")
+    incident_id: str = Field(..., description="The incident ID")
+    storage_script: str = Field(..., description="Python script for storing secret in AWS Secrets Manager")
+    retrieval_code: str = Field(..., description="Generated code snippet for retrieving secret at runtime")
+    instructions: str = Field(..., description="Step-by-step remediation instructions")
+    message: str = Field(..., description="Summary message")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "success",
+                "incident_id": "uuid-123",
+                "storage_script": "import boto3\n...",
+                "retrieval_code": "import boto3\nresponse = client.get_secret_value(...)",
+                "instructions": "1. Run the storage script\n2. Update your code...",
+                "message": "Remediation scripts generated successfully"
+            }
+        }

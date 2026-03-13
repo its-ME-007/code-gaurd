@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     database_echo: bool = False  # Set to True for SQL logging
     
     class Config:
-        env_file = ".env"
+        env_file = ".env" # check out later 
         case_sensitive = False
         extra = "ignore"
     
