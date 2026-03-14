@@ -413,6 +413,106 @@ class SecretsManagerService:
                 "status": "error",
                 "message": error_msg
             }
+    
+    def store_batch_secrets(
+        self,
+        batch_items: list
+    ) -> list:
+        """
+        Store multiple secrets in batch operation with individual error handling.
+        
+        Each secret is stored independently. Failures in one secret do not block
+        others from being stored. Returns detailed per-secret results.
+        
+        Args:
+            batch_items: List of dicts, each with:
+                - type: Secret type/provider (e.g., "openai", "stripe")
+                - language: Language context (stored as metadata, not used for code generation)
+                - secret_value: The secret value (JSON or simple string)
+        
+        Returns:
+            List of dicts with per-secret results:
+            [{
+                "secret_id": "...",
+                "type": "...",
+                "status": "success" or "error",
+                "error_message": "..." (if status is error),
+                "version_id": "..." (if status is success)
+            }, ...]
+            
+        Example:
+            >>> items = [
+            ...     {"type": "openai", "language": "python", "secret_value": "sk-..."},
+            ...     {"type": "stripe", "language": "javascript", "secret_value": "sk_live_..."}
+            ... ]
+            >>> results = service.store_batch_secrets(items)
+        """
+        from uuid import uuid4
+        
+        results = []
+        
+        for item in batch_items:
+            try:
+                # Generate unique secret ID with type prefix
+                secret_type = item.get("type", "unknown")
+                language = item.get("language", "unknown")
+                secret_value = item.get("secret_value")
+                
+                if not secret_value:
+                    results.append({
+                        "secret_id": None,
+                        "type": secret_type,
+                        "status": "error",
+                        "error_message": "secret_value is required",
+                        "version_id": None
+                    })
+                    continue
+                
+                secret_id = f"{secret_type}_{uuid4()}"
+                
+                # Store the secret with language metadata
+                store_result = self.store_secret(
+                    secret_id=secret_id,
+                    secret_value=secret_value,
+                    service_name=secret_type,
+                    environment="default",
+                    description=f"Batch-stored {secret_type} secret with {language} context"
+                )
+                
+                # Extract relevant info for batch response
+                results.append({
+                    "secret_id": secret_id,
+                    "type": secret_type,
+                    "status": "success",
+                    "error_message": None,
+                    "version_id": store_result.get("version_id")
+                })
+                
+            except SecretStorageError as e:
+                # Per-secret error handling - don't stop processing others
+                secret_type = item.get("type", "unknown")
+                print(f"✗ Failed to store {secret_type} secret: {str(e)}")
+                results.append({
+                    "secret_id": None,
+                    "type": secret_type,
+                    "status": "error",
+                    "error_message": str(e),
+                    "version_id": None
+                })
+            except Exception as e:
+                # Catch-all for unexpected errors
+                secret_type = item.get("type", "unknown")
+                print(f"✗ Unexpected error storing {secret_type} secret: {str(e)}")
+                results.append({
+                    "secret_id": None,
+                    "type": secret_type,
+                    "status": "error",
+                    "error_message": f"Unexpected error: {str(e)}",
+                    "version_id": None
+                })
+        
+        print(f"✓ Batch store completed: {len(results)} items processed")
+        return results
 
 
 # Utility functions for direct usage

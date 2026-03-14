@@ -12,7 +12,11 @@ from app.api.schemas import (
     CodeGenerationRequest,
     CodeGenerationResponse,
     SecretStoreAndGenerateRequest,
-    SecretStoreAndGenerateResponse
+    SecretStoreAndGenerateResponse,
+    BatchSecretItem,
+    BatchStoreAndGenerateRequest,
+    BatchSecretProcessResult,
+    BatchStoreAndGenerateResponse
 )
 from app.services.rotation_service import RotationService
 from app.services.audit_service import AuditService
@@ -507,6 +511,189 @@ async def store_secret_and_generate_code(request: SecretStoreAndGenerateRequest)
         raise HTTPException(
             status_code=500,
             detail=f"Operation failed: {error_msg}"
+        )
+
+
+@router.post("/secrets/store-and-generate-batch")
+async def store_batch_secrets_and_generate_code(request: BatchStoreAndGenerateRequest):
+    """
+    Store multiple secrets in batch AND generate unified retrieval code.
+    
+    This endpoint:
+    1. Stores each secret individually in AWS Secrets Manager (isolated error handling)
+    2. Tracks per-secret success/failure
+    3. Generates a single unified code snippet in the specified language that retrieves all secrets
+    
+    The 'language' field in each secret is stored as metadata for reference/auditing.
+    The 'retrieval_language' determines the language of the unified code output.
+    
+    Args:
+        - **secrets**: Array of secret objects, each with:
+            - type: Secret type/provider (e.g., "openai", "stripe")
+            - language: Language context (stored as metadata)
+            - secret_value: The secret value (JSON or simple string)
+        - **retrieval_language**: Language for the unified code (python, javascript, go, java, php, csharp)
+        - **region**: AWS region (default: us-east-1)
+    
+    Returns:
+        - **status**: "success" (all stored), "partial_success" (some stored), or "error" (validation failed)
+        - **operation_summary**: Dict with total, succeeded, failed counts
+        - **processed_secrets**: Array with per-secret result details
+        - **retrieval_code**: Unified code snippet for retrieving all secrets
+        - **language**: Language of the retrieval code
+        - **timestamp**: Operation timestamp
+    
+    HTTP Status Codes:
+        - 201: All secrets stored successfully
+        - 207: Partial success (some succeeded, some failed)
+        - 400: Validation error or all failed
+    """
+    from app.services.secret_code_generator import SecretCodeGeneratorBatch
+    import uuid
+    
+    start_time = time.time()
+    batch_operation_id = f"batch_{uuid.uuid4()}"
+    retrieval_language = request.retrieval_language or "python"
+    region = request.region or settings.aws_region
+    
+    try:
+        # Validate retrieval language
+        retrieval_lang_lower = retrieval_language.lower()
+        if retrieval_lang_lower not in SecretCodeGenerator.SUPPORTED_LANGUAGES:
+            supported = ', '.join(SecretCodeGenerator.SUPPORTED_LANGUAGES.keys())
+            raise ValueError(f"Unsupported retrieval language: {retrieval_language}. Supported: {supported}")
+        
+        # Validate secrets array is not empty
+        if not request.secrets or len(request.secrets) == 0:
+            raise ValueError("secrets array cannot be empty")
+        
+        # Step 1: Store all secrets with individual error handling
+        batch_items = [
+            {
+                "type": secret.type,
+                "language": secret.language,
+                "secret_value": secret.secret_value
+            }
+            for secret in request.secrets
+        ]
+        
+        process_results = secrets_service.store_batch_secrets(batch_items)
+        
+        # Separate successful and failed results
+        successful_results = [r for r in process_results if r["status"] == "success"]
+        failed_results = [r for r in process_results if r["status"] == "error"]
+        
+        # Step 2: If no secrets were stored successfully, return error
+        if len(successful_results) == 0:
+            error_details = [f"{r['type']}: {r['error_message']}" for r in failed_results]
+            
+            # Log failed batch operation
+            audit_service.log_secret_operation({
+                "secret_id": batch_operation_id,
+                "operation_type": "batch_store_and_generate",
+                "operation_status": "failed",
+                "batch_size": len(request.secrets),
+                "succeeded": 0,
+                "failed": len(failed_results),
+                "code_generated": False,
+                "error_message": f"All secrets failed: {'; '.join(error_details)}",
+                "operation_time_ms": int((time.time() - start_time) * 1000)
+            })
+            
+            raise HTTPException(
+                status_code=400,
+                detail=f"Batch operation failed: {'; '.join(error_details)}"
+            )
+        
+        # Step 3: Generate unified code for all successful secrets
+        successful_secret_ids = [r["secret_id"] for r in successful_results]
+        
+        try:
+            retrieval_code = SecretCodeGeneratorBatch.generate_batch_code(
+                secret_ids=successful_secret_ids,
+                language=retrieval_language,
+                region=region
+            )
+        except ValueError as e:
+            # Log failed code generation
+            audit_service.log_secret_operation({
+                "secret_id": batch_operation_id,
+                "operation_type": "batch_store_and_generate",
+                "operation_status": "partial_failure",
+                "batch_size": len(request.secrets),
+                "succeeded": len(successful_results),
+                "failed": len(failed_results),
+                "code_generated": False,
+                "error_message": f"Code generation failed: {str(e)}",
+                "operation_time_ms": int((time.time() - start_time) * 1000)
+            })
+            raise HTTPException(
+                status_code=400,
+                detail=f"Code generation failed: {str(e)}"
+            )
+        
+        # Step 4: Determine overall status
+        overall_status = "success" if len(failed_results) == 0 else "partial_success"
+        http_status_code = 201 if len(failed_results) == 0 else 207
+        
+        # Step 5: Log successful batch operation
+        audit_service.log_secret_operation({
+            "secret_id": batch_operation_id,
+            "operation_type": "batch_store_and_generate",
+            "operation_status": overall_status,
+            "batch_size": len(request.secrets),
+            "succeeded": len(successful_results),
+            "failed": len(failed_results),
+            "retrieval_language": retrieval_language,
+            "code_generated": True,
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
+        
+        # Step 6: Build response
+        response_content = {
+            "status": overall_status,
+            "operation_summary": {
+                "total": len(request.secrets),
+                "succeeded": len(successful_results),
+                "failed": len(failed_results)
+            },
+            "processed_secrets": process_results,
+            "retrieval_code": retrieval_code,
+            "language": retrieval_language,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        return JSONResponse(content=response_content, status_code=http_status_code)
+        
+    except ValueError as e:
+        # Validation error
+        audit_service.log_secret_operation({
+            "secret_id": batch_operation_id,
+            "operation_type": "batch_store_and_generate",
+            "operation_status": "failed",
+            "error_message": f"Validation error: {str(e)}",
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
+        raise HTTPException(
+            status_code=400,
+            detail=f"Validation error: {str(e)}"
+        )
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
+    except Exception as e:
+        # Unexpected error
+        error_msg = str(e)
+        audit_service.log_secret_operation({
+            "secret_id": batch_operation_id,
+            "operation_type": "batch_store_and_generate",
+            "operation_status": "failed",
+            "error_message": f"Unexpected error: {error_msg}",
+            "operation_time_ms": int((time.time() - start_time) * 1000)
+        })
+        raise HTTPException(
+            status_code=500,
+            detail=f"Batch operation failed: {error_msg}"
         )
 
 

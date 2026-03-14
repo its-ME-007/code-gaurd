@@ -192,3 +192,98 @@ class SecretStoreAndGenerateResponse(BaseModel):
     code: str = Field(..., description="Generated code snippet")
     code_message: str = Field(..., description="Code generation message")
     timestamp: str = Field(..., description="Operation timestamp")
+
+
+# ============================================================================
+# Batch Multi-Key Processing Schemas
+# ============================================================================
+
+class BatchSecretItem(BaseModel):
+    """Schema for a single secret item in batch processing"""
+    type: str = Field(..., description="Secret type/provider (e.g., 'openai', 'stripe', 'anthropic')")
+    language: str = Field(..., description="Language context of this secret (stored as metadata, not used for code generation)")
+    secret_value: str = Field(..., description="The secret value (JSON or simple string)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "type": "openai",
+                "language": "python",
+                "secret_value": "sk-proj-abc123..."
+            }
+        }
+
+
+class BatchStoreAndGenerateRequest(BaseModel):
+    """Schema for batch storing multiple secrets and generating unified retrieval code"""
+    secrets: list[BatchSecretItem] = Field(..., description="Array of secrets to store and process")
+    retrieval_language: str = Field("python", description="Language for the unified retrieval code: python, javascript, go, java, php, csharp")
+    region: Optional[str] = Field("us-east-1", description="AWS region for the generated code")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "secrets": [
+                    {
+                        "type": "openai",
+                        "language": "python",
+                        "secret_value": "sk-proj-abc123..."
+                    },
+                    {
+                        "type": "stripe",
+                        "language": "javascript",
+                        "secret_value": "sk_live_..."
+                    }
+                ],
+                "retrieval_language": "javascript",
+                "region": "us-east-1"
+            }
+        }
+
+
+class BatchSecretProcessResult(BaseModel):
+    """Schema for per-secret processing result in batch operation"""
+    secret_id: str = Field(..., description="Generated secret identifier")
+    type: str = Field(..., description="Secret type/provider")
+    status: str = Field(..., description="'success' or 'error'")
+    error_message: Optional[str] = Field(None, description="Error message if status is 'error'")
+    version_id: Optional[str] = Field(None, description="AWS secret version ID if successful")
+
+
+class BatchStoreAndGenerateResponse(BaseModel):
+    """Schema for batch store and generate unified code response"""
+    status: str = Field(..., description="Overall status: 'success', 'partial_success', or 'error'")
+    operation_summary: dict = Field(..., description="Summary with keys: total, succeeded, failed")
+    processed_secrets: list[BatchSecretProcessResult] = Field(..., description="Per-secret processing results")
+    retrieval_code: str = Field(..., description="Unified code snippet with helper function to retrieve all secrets")
+    language: str = Field(..., description="Language of the unified retrieval code")
+    timestamp: str = Field(..., description="Operation timestamp")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "partial_success",
+                "operation_summary": {
+                    "total": 2,
+                    "succeeded": 2,
+                    "failed": 0
+                },
+                "processed_secrets": [
+                    {
+                        "secret_id": "openai_550e8400-e29b-41d4-a716-446655440000",
+                        "type": "openai",
+                        "status": "success",
+                        "version_id": "550e8400-e29b-41d4-a716-446655440001"
+                    },
+                    {
+                        "secret_id": "stripe_550e8400-e29b-41d4-a716-446655440002",
+                        "type": "stripe",
+                        "status": "success",
+                        "version_id": "550e8400-e29b-41d4-a716-446655440003"
+                    }
+                ],
+                "retrieval_code": "...",
+                "language": "javascript",
+                "timestamp": "2026-03-14T12:00:00.000000"
+            }
+        }
